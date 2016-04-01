@@ -48,6 +48,45 @@ log_output () {
     echo "`date +'%Y-%m-%d %H:%M:%S'` ${HOST_NAME} ${LOGTAG}:  $1"  >> $LOGFILE
 }
 
+# Check the value is correct type
+# Argument
+#   $1: Type
+#   $2: Config File
+#   $3: Parameter Name
+#   $4: Value
+# Return
+#   0: The value is correct type
+# Exit the program:
+#   if parameter is invalid type or not set
+check_config_type() {
+    expected_type=$1
+    conf_file=$2
+    parameter_name=$3
+    value=$4
+
+    ret=0
+    case $expected_type in
+        int)
+            expr $value + 1 > /dev/null 2>&1
+            if [ $? -ge 2 ]; then ret=1; fi
+            ;;
+        string)
+            if [ -z $value ] ; then ret=1; fi
+            ;;
+        *)
+            ret=1
+            ;;
+    esac
+
+    if [ $ret -eq 1 ] ; then
+        log_info "config file parameter error. [${conf_file}:${parameter_name}]"
+        exit 1
+    fi
+
+    log_info "config file parameter : ${parameter_name}=${value}"
+    return 0
+}
+
 # Some sanity checks on the check target processing list.
 # Format of the proc.list(Each columns must be separated by a comma.)
 # The first column : Process ID (two digits of leading zeros) : cannot be omitted.

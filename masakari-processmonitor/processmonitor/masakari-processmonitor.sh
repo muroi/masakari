@@ -37,15 +37,7 @@ RESOURCE_MANAGER_SEND_FAIL_FLG="off"
 ALREADY_SEND_ID_LIST=()
 LOGTAG=`basename $0`
 
-# Define the default setting.
-DEFAULT_PROCESS_CHECK_INTERVAL=5
-DEFAULT_PROCESS_REBOOT_RETRY=3
-DEFAULT_REBOOT_INTERVAL=10
-DEFAULT_RESOURCE_MANAGER_SEND_TIMEOUT=10
-DEFAULT_RESOURCE_MANAGER_SEND_RETRY=12
-DEFAULT_RESOURCE_MANAGER_SEND_DELAY=10
-DEFAULT_RESOURCE_MANAGER_SEND_RETRY_TIMEOUT=120
-
+. $SCRIPT_COMMON_SH
 
 # This function locks a file
 # Argument:
@@ -60,10 +52,10 @@ file_unlock () {
     exec 9>&-
 }
 
-# This function reads the configuration file and setting value.
-# If the value is omitted, set the default value.
-# If invalid value is set, return "1".
-# Note) The default value for each item are as follows.
+# This function reads the configuration file and setting parameter
+# If a parameter is not in the file, it use defualt.
+# If an invalid value is set, exit the program
+# Note) The default value for each parameter
 #       PROCESS_CHECK_INTERVAL (defualt : 60)
 #       PROCESS_REBOOT_RETRY (default : 10)
 #       REBOOT_INTERVAL (default : 3)
@@ -73,9 +65,10 @@ file_unlock () {
 #       RESOURCE_MANAGER_SEND_RETRY_TIMEOUT (default : 10)
 #
 # Return value:
-#   0 : Setting completion
-#   1 : Reading failure of the configuration or invalid setting value
-#   2 : Omission of the required item
+#   0 : success to read config file and set parameter
+# Exit status:
+#   1 : fail to read config file
+#   2 : parameter is invalid type or not set
 set_conf_value () {
     # Initialize setting
     unset RESOURCE_MANAGER_URL
@@ -92,99 +85,35 @@ set_conf_value () {
     source $SCRIPT_CONF_FILE > /dev/null 2>&1
     if [ $? -ne 0 ]; then
         log_info "config file read error. [$SCRIPT_CONF_FILE]"
-        return 1
+        exit 1
     fi
 
-    # Empty string is permitted. If there is no key itself, consider it as an error.
-    if [ "${RESOURCE_MANAGER_URL-UNDEF}" = "UNDEF" ]; then
-        log_info "config file parameter not found. [$SCRIPT_CONF_FILE:RESOURCE_MANAGER_URL]"
-        return 2
-    fi
-    log_debug "config file parameter : RESOURCE_MANAGER_URL=$RESOURCE_MANAGER_URL"
+    PROCESS_CHECK_INTERVAL=${PROCESS_CHECK_INTERVAL:-60}
+    check_config_type 'int' $SCRIPT_CONF_FILE PROCESS_CHECK_INTERVAL $PROCESS_CHECK_INTERVAL
 
-    # If the PROCESS_CHECK_INTERVAL is omitted, set the default value.
-    # If invalid is set, return 1.
-    expect_empty=`echo -n $PROCESS_CHECK_INTERVAL | sed 's/[0-9]//g'`
-    if [ "x" = "x${PROCESS_CHECK_INTERVAL}" ]; then
-        PROCESS_CHECK_INTERVAL=$DEFAULT_PROCESS_CHECK_INTERVAL
-    elif [ "x" != "x${expect_empty}" ]; then
-        log_info "config file parameter error. [$SCRIPT_CONF_FILE:PROCESS_CHECK_INTERVAL]"
-        return 1
-    fi
-    log_debug "config file parameter : PROCESS_CHECK_INTERVAL=$PROCESS_CHECK_INTERVAL"
+    PROCESS_REBOOT_RETRY=${PROCESS_REBOOT_RETRY:-10}
+    check_config_type 'int' $SCRIPT_CONF_FILE PROCESS_REBOOT_RETRY $PROCESS_REBOOT_RETRY
 
-    # If the PROCESS_REBOOT_RETRY is omitted, set the default value.
-    # If invalid is set, return 1.
-    expect_empty=`echo -n $PROCESS_REBOOT_RETRY | sed 's/[0-9]//g'`
-    if [ "x" = "x${PROCESS_REBOOT_RETRY}" ]; then
-        PROCESS_REBOOT_RETRY=$DEFAULT_PROCESS_REBOOT_RETRY
-    elif [ "x" != "x${expect_empty}" ]; then
-        log_info "config file parameter error. [$SCRIPT_CONF_FILE:PROCESS_REBOOT_RETRY]"
-        return 1
-    fi
-    log_debug "config file parameter : PROCESS_REBOOT_RETRY=$PROCESS_REBOOT_RETRY"
+    REBOOT_INTERVAL=${REBOOT_INTERVAL:-3}
+    check_config_type 'int' $SCRIPT_CONF_FILE REBOOT_INTERVAL $REBOOT_INTERVAL
 
-    # If the REBOOT_INTERVAL is omitted, set the default value.
-    # If invalid is set, return 1.
-    expect_empty=`echo -n $REBOOT_INTERVAL | sed 's/[0-9]//g'`
-    if [ "x" = "x${REBOOT_INTERVAL}" ]; then
-        REBOOT_INTERVAL=$DEFAULT_REBOOT_INTERVAL
-    elif [ "x" != "x${expect_empty}" ]; then
-        log_info "config file parameter error. [$SCRIPT_CONF_FILE:REBOOT_INTERVAL]"
-        return 1
-    fi
-    log_debug "config file parameter : REBOOT_INTERVAL=$REBOOT_INTERVAL"
+    RESOURCE_MANAGER_SEND_TIMEOUT=${RESOURCE_MANAGER_SEND_TIMEOUT:-10}
+    check_config_type 'int' $SCRIPT_CONF_FILE RESOURCE_MANAGER_SEND_TIMEOUT $RESOURCE_MANAGER_SEND_TIMEOUT
 
-    # If the RESOURCE_MANAGER_SEND_TIMEOUT is omitted, set the default value.
-    # If invalid is set, return 1.
-    expect_empty=`echo -n $RESOURCE_MANAGER_SEND_TIMEOUT | sed 's/[0-9]//g'`
-    if [ "x" = "x${RESOURCE_MANAGER_SEND_TIMEOUT}" ]; then
-        RESOURCE_MANAGER_SEND_TIMEOUT=$DEFAULT_RESOURCE_MANAGER_SEND_TIMEOUT
-    elif [ "x" != "x${expect_empty}" ]; then
-        log_info "config file parameter error. [$SCRIPT_CONF_FILE:RESOURCE_MANAGER_SEND_TIMEOUT]"
-        return 1
-    fi
-    log_debug "config file parameter : RESOURCE_MANAGER_SEND_TIMEOUT=$RESOURCE_MANAGER_SEND_TIMEOUT"
+    RESOURCE_MANAGER_SEND_RETRY=${RESOURCE_MANAGER_SEND_RETRY:-3}
+    check_config_type 'int' $SCRIPT_CONF_FILE RESOURCE_MANAGER_SEND_RETRY $RESOURCE_MANAGER_SEND_RETRY
 
-    # If the RESOURCE_MANAGER_SEND_RETRY is omitted, set the default value.
-    # If invalid is set, return 1.
-    expect_empty=`echo -n $RESOURCE_MANAGER_SEND_RETRY | sed 's/[0-9]//g'`
-    if [ "x" = "x${RESOURCE_MANAGER_SEND_RETRY}" ]; then
-        RESOURCE_MANAGER_SEND_RETRY=$DEFAULT_RESOURCE_MANAGER_SEND_RETRY
-    elif [ "x" != "x${expect_empty}" ]; then
-        log_info "config file parameter error. [$SCRIPT_CONF_FILE:RESOURCE_MANAGER_SEND_RETRY]"
-        return 1
-    fi
-    log_debug "config file parameter : RESOURCE_MANAGER_SEND_RETRY=$RESOURCE_MANAGER_SEND_RETRY"
+    RESOURCE_MANAGER_SEND_DELAY=${RESOURCE_MANAGER_SEND_DELAY:-1}
+    check_config_type 'int' $SCRIPT_CONF_FILE RESOURCE_MANAGER_SEND_DELAY $RESOURCE_MANAGER_SEND_DELAY
 
-    # If the RESOURCE_MANAGER_SEND_RETRY_TIMEOUT is omitted, set the default value.
-    # If invalid is set, return 1.
-    expect_empty=`echo -n $RESOURCE_MANAGER_SEND_RETRY_TIMEOUT | sed 's/[0-9]//g'`
-    if [ "x" = "x${RESOURCE_MANAGER_SEND_RETRY_TIMEOUT}" ]; then
-        RESOURCE_MANAGER_SEND_RETRY_TIMEOUT=$DEFAULT_RESOURCE_MANAGER_SEND_RETRY_TIMEOUT
-    elif [ "x" != "x${expect_empty}" ]; then
-        log_info "config file parameter error. [$SCRIPT_CONF_FILE:RESOURCE_MANAGER_SEND_RETRY_TIMEOUT]"
-        return 1
-    fi
-    log_debug "config file parameter : RESOURCE_MANAGER_SEND_RETRY_TIMEOUT=$RESOURCE_MANAGER_SEND_RETRY_TIMEOUT"
+    RESOURCE_MANAGER_SEND_RETRY_TIMEOUT=${RESOURCE_MANAGER_SEND_RETRY_TIMEOUT:-10}
+    check_config_type 'int' $SCRIPT_CONF_FILE RESOURCE_MANAGER_SEND_RETRY_TIMEOUT $RESOURCE_MANAGER_SEND_RETRY_TIMEOUT
 
-    # If the RESOURCE_MANAGER_SEND_DELAY is omitted, set the default value.
-    # If invalid is set, return 1.
-    expect_empty=`echo -n $RESOURCE_MANAGER_SEND_DELAY | sed 's/[0-9]//g'`
-    if [ "x" = "x${RESOURCE_MANAGER_SEND_DELAY}" ]; then
-        RESOURCE_MANAGER_SEND_DELAY=$DEFAULT_RESOURCE_MANAGER_SEND_DELAY
-    elif [ "x" != "x${expect_empty}" ]; then
-        log_info "config file parameter error. [$SCRIPT_CONF_FILE:RESOURCE_MANAGER_SEND_DELAY]"
-        return 1
-    fi
-    log_debug "config file parameter : RESOURCE_MANAGER_SEND_DELAY=$RESOURCE_MANAGER_SEND_DELAY"
+    RESOURCE_MANAGER_URL=${RESOURCE_MANAGER_URL:""}
+    check_config_type 'string' $SCRIPT_CONF_FILE RESOURCE_MANAGER_URL $RESOURCE_MANAGER_URL
 
-    # If the REGION_ID is omitted, return 1.
-    if [ -z "$REGION_ID" ]; then
-        log_info "config file parameter error. [$SCRIPT_CONF_FILE:REGION_ID]"
-        return 2
-    fi
-    log_debug "config file parameter : REGION_ID=$REGION_ID"
+    REGION_ID=${REGION_ID:""}
+    check_config_type 'string' $SCRIPT_CONF_FILE REGION_ID $REGION_ID
 
     return 0
 }
@@ -305,11 +234,6 @@ print time.daylight"`
 send_to_rm () {
     log_debug "info : send_to_rm : begin"
 
-    if [ -z $RESOURCE_MANAGER_URL ]; then
-        log_info "info : RM server URL is not set."
-        log_info "info : $BASE_NAME : end"
-        return 0
-    fi
     # Create required information to execute.
     NOTICE_OPTS="--silent"
     NOTICE_OPTS+=" --header \"Content-Type:application/json\""
@@ -489,13 +413,9 @@ down_process_reboot(){
 
 
 # Initial processing (check proc.list and read conf file)
-. $SCRIPT_COMMON_SH 
 log_debug "processmonitor start!!"
 check_proc_file_common
 set_conf_value
-if [ $? -ne 0 ]; then
-    exit 1
-fi
 
 if [ -e $NOTICE_OUTPUT ]; then
     sudo rm -rf $NOTICE_OUTPUT
@@ -511,12 +431,7 @@ while true
 do
     # Recheck and reload of the proc.list.
     check_proc_file_common
-    # If invalid value is set to configuration file, set default value.
     set_conf_value
-
-    if [ $? -eq 2 ]; then
-       exit 1
-    fi
 
     # Execute process check processing.
     ${SCRIPT_CHECK_PROCESS}
