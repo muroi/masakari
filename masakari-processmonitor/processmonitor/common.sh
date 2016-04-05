@@ -87,18 +87,53 @@ check_config_type() {
     return 0
 }
 
-# Some sanity checks on the check target processing list.
-# Format of the proc.list(Each columns must be separated by a comma.)
-# The first column : Process ID (two digits of leading zeros) : cannot be omitted.
-# The second column : The keyword when check exists in processing list(empty is NG.). : cannot be omitted
-# The third column : The initial startup command (it's required to include word of "start". )
-# The fourth column : Rebooting command (it's required to include word of "start".)
-# The fifth column : Shell file name for special processing at the initial startup(before the startup)
-# The sixth column : Shell file name for special processing at the initial startup(after the startup)
-# The seventh column : Shell file name for special processing at the initial restart(before the startup)
-# The eighth column : Shell file name for special processing at the initial restart(after the startup)
+# Check the file exists or not
+# Argument
+#   $1: File Path
+#   $2: Config File
+# Return
+#   0: The file is executable or is not specified
+# Exit the program:
+#   if the file doesn't exist or is not executable
+check_executable_file () {
+    # If the file path is not specified in the conf file,
+    # # of argument could be 1.
+    if [ $# -ne 2 ]; then
+        return 0
+    fi
+
+    file_path=$1
+    conf_file=$2
+
+    if [ ! -e $file_path ]; then
+        log_info "$conf_file format error: ($file_path) does't exist."
+        exit 2
+    fi
+    if [ ! -x $file_path ]; then
+        log_info "$conf_file format error: ($file_path) isn't exeutable."
+        exit 2
+    fi
+
+    log_info "$file_path exists and is executable."
+    return 0
+}
+
+# A function for parameter check for proc.list config file.
+# proc.list must be CSV format and the format is following:
+#   First column   : ID (two digits of leading zeros)
+#   Second column  : A keyword for checking if the process is running or not
+#   Third column   : A command for first startup the process
+#   Fourth column  : A command for rebooting the process
+#   Fifth column   : File path for preprocessing shell script before startup (Optional)
+#   Sixth column   : File path for postprocessing shell script after startup (Optional)
+#   Seventh column : File path for preprocessing shell script before rebooting (Optional)
+#   Eighth column  : File path for postprocessing shell script after rebooting (Optional)
 #
-# When abonormal condition is detected about proc.list, exits by "exit 2".
+# Return
+#   0: success to check the file format
+# Exit the program:
+#   if the file format is invalid
+
 column_num=8
 check_proc_file_common (){
 
@@ -136,98 +171,28 @@ check_proc_file_common (){
         fi
 
         PROC_ID=`echo $line | cut -d"," -f 1`
-        if [ ! -z "$PROC_ID" ]; then
-            expr "$PROC_ID" + 1  >/dev/null 2>&1
-            # If PROC ID is not a numeric,
-            if [ 1 -lt $? ]; then
-                log_info "$PROC_LIST format error (PROC_ID) not number. line $LINE_NO"
-                exit 2
-            fi
-        else
-            log_info "$PROC_LIST format error (PROC_ID) empty. line $LINE_NO"
-            exit 2
-        fi
+        check_config_type 'int' $PROC_LIST PROC_ID $PROC_ID
 
         KEY_WORD=`echo $line | cut -d"," -f 2`
-        if [ -z "$KEY_WORD" ]; then
-            log_info "$PROC_LIST format error (KEY_WORD) empty. line $LINE_NO"
-            exit 2
-        fi
-
+        check_config_type 'string' $PROC_LIST KEY_WORD $KEY_WORD
 
         START_CMD=`echo $line | cut -d"," -f 3`
-        if [ ! -z "$START_CMD" ]; then
-            check=`echo $START_CMD | grep -c start`
-            # If words of "start" are not included in initial startup processing.,
-            if [ $check -ne 1 ]; then
-                log_info "$PROC_LIST format error (START_CMD) line $LINE_NO"
-                exit 2
-            fi
-        fi
+        check_config_type 'string' $PROC_LIST START_CMD $START_CMD
 
         RESTART_CMD=`echo $line | cut -d"," -f 4`
-        if [ ! -z "$RESTART_CMD" ]; then
-            check=`echo $RESTART_CMD | grep -c start`
-            # If words of "start" are not included in restart processing,
-            if [ $check -ne 1 ]; then
-                log_info "$PROC_LIST format error (RESTART_CMD) line $LINE_NO"
-                exit 2
-            fi
-        fi
+        check_config_type 'string' $PROC_LIST RESTART_CMD $RESTART_CMD
 
-        # Check the existence and validity of special processing shell file to be executed before and after start processing.
         START_SP_CMDFILE_BEFORE=`echo $line | cut -d"," -f 5`
-        if [ ! -z "$START_SP_CMDFILE_BEFORE" ]; then
-            # The starting (before executing) special processing shell file does not exist.
-            if [ ! -e $START_SP_CMDFILE_BEFORE ]; then
-                log_info "$PROC_LIST format error (START_SP_CMDFILE_BEFORE) not exists. line $LINE_NO"
-                exit 2
-            fi
-            if [ ! -x $START_SP_CMDFILE_BEFORE ]; then
-                log_info "$PROC_LIST format error (START_SP_CMDFILE_BEFORE) not exeutable. line $LINE_NO"
-                exit 2
-            fi
-        fi
+        check_executable_file $START_SP_CMDFILE_BEFORE $PROC_LIST
 
         START_SP_CMDFILE_AFTER=`echo $line | cut -d"," -f 6`
-        if [ ! -z "$START_SP_CMDFILE_AFTER" ]; then
-            # The restarting (before executing) special processing shell file does not exist.
-            if [ ! -e $START_SP_CMDFILE_AFTER ]; then
-                log_info "$PROC_LIST format error (START_SP_CMDFILE_AFTER) not exists. line $LINE_NO"
-                exit 2
-            fi
-            if [ ! -x $START_SP_CMDFILE_AFTER ]; then
-                log_info "$PROC_LIST format error (START_SP_CMDFILE_AFTER) not exeutable. line $LINE_NO"
-                exit 2
-            fi
-        fi
+        check_executable_file $START_SP_CMDFILE_AFTER $PROC_LIST
 
-        # Check the existence and validity of special processing shell file to be executed before and after restart processing.
         RESTART_SP_CMDFILE_BEFORE=`echo $line | cut -d"," -f 7`
-        if [ ! -z "$RESTART_SP_CMDFILE_BEFORE" ]; then
-            # The restarting (before executing) special processing shell file does not exist.
-            if [ ! -e $RESTART_SP_CMDFILE_BEFORE ]; then
-                log_info "$PROC_LIST format error (RESTART_SP_CMDFILE_BEFORE) not exists. line $LINE_NO"
-                exit 2
-            fi
-            if [ ! -x $RESTART_SP_CMDFILE_BEFORE ]; then
-                log_info "$PROC_LIST format error (RESTART_SP_CMDFILE_BEFORE) not exeutable. line $LINE_NO"
-                exit 2
-            fi
-        fi
+        check_executable_file $RESTART_SP_CMDFILE_BEFORE $PROC_LIST
 
         RESTART_SP_CMDFILE_AFTER=`echo $line | cut -d"," -f 8`
-        if [ ! -z "$RESTART_SP_CMDFILE_AFTER" ]; then
-            # The restarting (before executing) special processing shell file does not exist.
-            if [ ! -e $RESTART_SP_CMDFILE_AFTER ]; then
-                log_info "$PROC_LIST format error (RESTART_SP_CMDFILE_AFTER) not exists. line $LINE_NO"
-                exit 2
-            fi
-            if [ ! -x $RESTART_SP_CMDFILE_AFTER ]; then
-                log_info "$PROC_LIST format error (RESTART_SP_CMDFILE_AFTER) not exeutable. line $LINE_NO"
-                exit 2
-            fi
-        fi
+        check_executable_file $RESTART_SP_CMDFILE_AFTER $PROC_LIST
 
         LINE_NO=`expr $LINE_NO + 1`
      done
